@@ -16,6 +16,16 @@ permissions and limitations under the License. See accompanying
 LICENSE file.
 -->
 
+# Build 
+
+## Configure 
+
+    # Install Maven - https://gist.github.com/fossouo/75da8b09125b214c63a4284a1c30cc40
+    # move to YCSB root dir - mvn clean package
+    mvn install:install-file -Dfile=../core/target/core-0.18.0-SNAPSHOT.jar -DgroupId=site.ycsb -DartifactId=core -Dversion=0.18.0-SNAPSHOT -Dpackaging=jar
+    mvn install:install-file -Dfile=../binding-parent/datastore-specific-descriptor/target/datastore-specific-descriptor-0.18.0-SNAPSHOT.jar -DgroupId=site.ycsb -DartifactId=datastore-specific-descriptor -Dversion=0.18.0-SNAPSHOT -Dpackaging=jar
+    
+
 # DynamoDB Binding
 
 http://aws.amazon.com/documentation/dynamodb/
