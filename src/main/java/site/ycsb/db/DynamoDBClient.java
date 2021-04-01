@@ -30,15 +30,33 @@ import org.apache.log4j.Logger;
 import site.ycsb.*;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import java.util.Vector;
 
+import java.util.UUID;
 /**
  * DynamoDB client for YCSB.
  */
+class UuidUtils {
+  public static UUID asUuid(byte[] bytes) {
+    ByteBuffer bb = ByteBuffer.wrap(bytes);
+    long firstLong = bb.getLong();
+    long secondLong = bb.getLong();
+    return new UUID(firstLong, secondLong);
+  }
+
+  public static byte[] asBytes(UUID uuid) {
+    ByteBuffer bb = ByteBuffer.wrap(new byte[16]);
+    bb.putLong(uuid.getMostSignificantBits());
+    bb.putLong(uuid.getLeastSignificantBits());
+    return bb.array();
+  }
+}
+
 
 public class DynamoDBClient extends DB {
 
@@ -54,9 +72,16 @@ public class DynamoDBClient extends DB {
     HASH_AND_RANGE
   }
 
+  private enum TimeseriesKeyType {
+    UUID
+  }
+
   private AmazonDynamoDB dynamoDB;
   private String primaryKeyName;
   private PrimaryKeyType primaryKeyType = PrimaryKeyType.HASH;
+
+  private String TimeseriesId;
+  private TimeseriesKeyType timeseriesKeyType = TimeseriesKeyType.UUID;
 
   // If the user choose to use HASH_AND_RANGE as primary key type, then
   // the following two variables become relevant. See documentation in the
@@ -83,6 +108,7 @@ public class DynamoDBClient extends DB {
     String configuredEndpoint = getProperties().getProperty("dynamodb.endpoint", null);
     String credentialsFile = getProperties().getProperty("dynamodb.awsCredentialsFile", null);
     String primaryKey = getProperties().getProperty("dynamodb.primaryKey", null);
+    String timeseriesid = getProperties().getProperty("dynamodb.timeseriesId", null);
     String primaryKeyTypeString = getProperties().getProperty("dynamodb.primaryKeyType", null);
     String consistentReads = getProperties().getProperty("dynamodb.consistentReads", null);
     String connectMax = getProperties().getProperty("dynamodb.connectMax", null);
@@ -98,6 +124,10 @@ public class DynamoDBClient extends DB {
 
     if (null != configuredEndpoint) {
       this.endpoint = configuredEndpoint;
+    }
+
+    if (null == timeseriesid || timeseriesid.length() < 1) {
+      throw new DBException("Missing time series id attribute name, cannot continue");
     }
 
     if (null == primaryKey || primaryKey.length() < 1) {
@@ -159,7 +189,10 @@ public class DynamoDBClient extends DB {
       LOGGER.debug("readkey: " + key + " from table: " + table);
     }
 
-    GetItemRequest req = new GetItemRequest(table, createPrimaryKey(key));
+    /* GetItemRequest req = new GetItemRequest(table, createPrimaryKey(key));  */
+
+    GetItemRequest req = new GetItemRequest(table, createTimeSeriesKey(key));
+
     req.setAttributesToGet(fields);
     req.setConsistentRead(consistentRead);
     GetItemResult res;
@@ -194,8 +227,10 @@ public class DynamoDBClient extends DB {
     /*
      * on DynamoDB's scan, startkey is *exclusive* so we need to
      * getItem(startKey) and then use scan for the res
-    */
-    GetItemRequest greq = new GetItemRequest(table, createPrimaryKey(startkey));
+    
+    GetItemRequest greq = new GetItemRequest(table, createPrimaryKey(startkey)); */
+    GetItemRequest greq = new GetItemRequest(table, createTimeSeriesKey(startkey));
+    
     greq.setAttributesToGet(fields);
 
     GetItemResult gres;
@@ -216,7 +251,9 @@ public class DynamoDBClient extends DB {
 
     int count = 1; // startKey is done, rest to go.
 
-    Map<String, AttributeValue> startKey = createPrimaryKey(startkey);
+    // Map<String, AttributeValue> startKey = createPrimaryKey(startkey);
+
+    Map<String, AttributeValue> startKey = createTimeSeriesKey(startkey);
     ScanRequest req = new ScanRequest(table);
     req.setAttributesToGet(fields);
     while (count < recordcount) {
@@ -256,7 +293,9 @@ public class DynamoDBClient extends DB {
       attributes.put(val.getKey(), new AttributeValueUpdate().withValue(v).withAction("PUT"));
     }
 
-    UpdateItemRequest req = new UpdateItemRequest(table, createPrimaryKey(key), attributes);
+    // UpdateItemRequest req = new UpdateItemRequest(table, createPrimaryKey(key), attributes);
+
+    UpdateItemRequest req = new UpdateItemRequest(table, createTimeSeriesKey(key), attributes);
 
     try {
       dynamoDB.updateItem(req);
@@ -305,7 +344,8 @@ public class DynamoDBClient extends DB {
       LOGGER.debug("deletekey: " + key + " from table: " + table);
     }
 
-    DeleteItemRequest req = new DeleteItemRequest(table, createPrimaryKey(key));
+    // DeleteItemRequest req = new DeleteItemRequest(table, createPrimaryKey(key));
+    DeleteItemRequest req = new DeleteItemRequest(table, createTimeSeriesKey(key));
 
     try {
       dynamoDB.deleteItem(req);
@@ -354,4 +394,15 @@ public class DynamoDBClient extends DB {
     }
     return k;
   }
+
+  private Map<String, AttributeValue> createTimeSeriesKey(String key) {
+    Map<String, AttributeValue> k = new HashMap<>();
+    if (timeseriesKeyType == timeseriesKeyType.UUID) {
+      k.put(TimeseriesId, new AttributeValue().withS(key));
+    } else {
+      throw new RuntimeException("Assertion Error: impossible time series key type");
+    }
+    return k;
+  }
+
 }
