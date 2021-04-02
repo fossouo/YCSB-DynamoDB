@@ -39,7 +39,7 @@ import java.util.Vector;
 
 import java.util.UUID;
 /**
- * DynamoDB client for YCSB.
+ * UUID Class.
  */
 class UuidUtils {
   public static UUID asUuid(byte[] bytes) {
@@ -56,7 +56,9 @@ class UuidUtils {
     return bb.array();
   }
 }
-
+/**
+ * DynamoDB client for YCSB.
+ */
 
 public class DynamoDBClient extends DB {
 
