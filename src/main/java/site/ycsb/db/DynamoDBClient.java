@@ -323,13 +323,13 @@ public class DynamoDBClient extends DB {
   @Override
   public Status insert(String table, String key, Map<String, ByteIterator> values) {
     if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("insertkey: " + primaryKeyName + "-" + key + " from table: " + table);
+      LOGGER.debug("insertkey: " + timeseriesKeyName + "-" + key + " from table: " + table);
     }
 
     Map<String, AttributeValue> attributes = createAttributes(values);
     // adding primary key
-    attributes.put(primaryKeyName, new AttributeValue(key));
-    if (primaryKeyType == PrimaryKeyType.HASH_AND_RANGE) {
+    attributes.put(timeseriesKeyName, new AttributeValue(key));
+    if (timeseriesKeyType == timeseriesKeyType.HASH_AND_RANGE) {
       // If the primary key type is HASH_AND_RANGE, then what has been put
       // into the attributes map above is the range key part of the primary
       // key, we still need to put in the hash key part here.
