@@ -30,7 +30,6 @@ import org.apache.log4j.Logger;
 import site.ycsb.*;
 
 import java.io.File;
-import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -58,14 +57,16 @@ public class DynamoDBClient extends DB {
   }
 
   private enum TimeseriesKeyType {
-    UUID
+    UUID,
+    HASH,
+    HASH_AND_RANGE
   }
 
   private AmazonDynamoDB dynamoDB;
   private String primaryKeyName;
   private PrimaryKeyType primaryKeyType = PrimaryKeyType.HASH;
 
-  private String TimeseriesId;
+  private String timeseriesKeyName;
   private TimeseriesKeyType timeseriesKeyType = TimeseriesKeyType.UUID;
 
   // If the user choose to use HASH_AND_RANGE as primary key type, then
@@ -93,8 +94,9 @@ public class DynamoDBClient extends DB {
     String configuredEndpoint = getProperties().getProperty("dynamodb.endpoint", null);
     String credentialsFile = getProperties().getProperty("dynamodb.awsCredentialsFile", null);
     String primaryKey = getProperties().getProperty("dynamodb.primaryKey", null);
-    String timeseriesid = getProperties().getProperty("dynamodb.timeseriesId", null);
+    String timeseriesKey = getProperties().getProperty("dynamodb.timeseriesKey", null);
     String primaryKeyTypeString = getProperties().getProperty("dynamodb.primaryKeyType", null);
+    String timeseriesKeyTypeString = getProperties().getProperty("dynamodb.timeseriesKeyType", null);
     String consistentReads = getProperties().getProperty("dynamodb.consistentReads", null);
     String connectMax = getProperties().getProperty("dynamodb.connectMax", null);
     String configuredRegion = getProperties().getProperty("dynamodb.region", null);
@@ -111,8 +113,31 @@ public class DynamoDBClient extends DB {
       this.endpoint = configuredEndpoint;
     }
 
-    if (null == timeseriesid || timeseriesid.length() < 1) {
+    if (null == timeseriesKey || timeseriesKey.length() < 1) {
       throw new DBException("Missing time series id attribute name, cannot continue");
+    }
+
+    if (null != timeseriesKeyTypeString) {
+      try {
+        this.timeseriesKeyType = timeseriesKeyType.valueOf(timeseriesKeyTypeString.trim().toUpperCase());
+      } catch (IllegalArgumentException e) {
+        throw new DBException("Invalid time series key mode specified: " + timeseriesKeyTypeString +
+            ". Expecting UUID, HASH or HASH_AND_RANGE.");
+      }
+    }
+
+    if (this.timeseriesKeyType == timeseriesKeyType.HASH_AND_RANGE) {
+      // When the time series key type is HASH_AND_RANGE, keys used by YCSB
+      // are range keys so we can benchmark performance of individual hash
+      // partitions. In this case, the user must specify the hash key's name
+      // and optionally can designate a value for the hash key.
+
+      String configuredHashKeyName = getProperties().getProperty("dynamodb.hashKeyName", null);
+      if (null == configuredHashKeyName || configuredHashKeyName.isEmpty()) {
+        throw new DBException("Must specify a non-empty hash key name when the primary key type is HASH_AND_RANGE.");
+      }
+      this.hashKeyName = configuredHashKeyName;
+      this.hashKeyValue = getProperties().getProperty("dynamodb.hashKeyValue", DEFAULT_HASH_KEY_VALUE);
     }
 
     if (null == primaryKey || primaryKey.length() < 1) {
@@ -162,6 +187,7 @@ public class DynamoDBClient extends DB {
           .withCredentials(new AWSStaticCredentialsProvider(new PropertiesCredentials(new File(credentialsFile))))
           .build();
       primaryKeyName = primaryKey;
+      timeseriesKeyName = timeseriesKey;
       LOGGER.info("dynamodb connection created with " + this.endpoint);
     } catch (Exception e1) {
       LOGGER.error("DynamoDBClient.init(): Could not initialize DynamoDB client.", e1);
@@ -383,7 +409,7 @@ public class DynamoDBClient extends DB {
   private Map<String, AttributeValue> createTimeSeriesKey(String key) {
     Map<String, AttributeValue> k = new HashMap<>();
     if (timeseriesKeyType == timeseriesKeyType.UUID) {
-      k.put(TimeseriesId, new AttributeValue().withS(key));
+      k.put(timeseriesKeyName, new AttributeValue().withS(key));
     } else {
       throw new RuntimeException("Assertion Error: impossible time series key type");
     }
